@@ -1,0 +1,9 @@
+cuda-keyring_1.1-1_all.deb
+gemm_cuda.cuda.o.d
+ts.txt
+ts2.txt
+ts3.txt
+.vscode/c_cpp_properties.json
+__pycache__/gpu_check.cpython-312.pyc
+__pycache__/llmAbs.cpython-310.pyc
+__pycache__/llmAbs.cpython-312.pyc
