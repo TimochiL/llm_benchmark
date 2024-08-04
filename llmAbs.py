@@ -27,16 +27,15 @@ class llmAbs:
         self.inputs = self.get_inputs(2)
         
         # Set parameters
-        self.set_kwargs()
+        self.generation_kwargs = self.set_kwargs()
         
         # Generate outputs hqq[1/2/3/4/8/fp16]
-        self.selected_types = (2,4,'fp16')
+        self.selected_types = (2,)
         self.outputs = dict()
         for type in self.selected_types:
             self.outputs[type] = self.generate_output(type)
-        
-        # for type in self.selected_types:
-        #     self.generate_output(type)
+            if self.outputs[type] is None:
+                raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
         
         # Display results
         self.display()
@@ -56,35 +55,43 @@ class llmAbs:
                     return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.model.device)
     
     def set_kwargs(self):
-        self.generation_kwargs = {
+        gk = {
             "do_sample": False,
             "temperature": 1.0,
-            "top_p": 0.8,
-            "max_new_tokens": 20,
+            "top_p": 1.0,
+            "max_new_tokens": 40,
             "min_new_tokens": 20
         }
+        return gk
     
     def generate_output(self, n_bits):
+        print(f"Generating output ({n_bits}).")
         match n_bits:
             case n if n in (1,2,3,4,8):
                 return self.model.generate(**self.inputs, cache_implementation="quantized",
                     cache_config=
                     {
-                        "backend": "quanto",
+                        "backend": "HQQ",
                         "nbits": n_bits,
                         "q_group_size": 32,
                         "residual_length": 64
                     }
                 )
             case 'fp16':
-                self.out_fp16 = self.model.generate(**self.inputs, **self.generation_kwargs)
+                inputs = self.inputs
+                generation_kwargs = self.generation_kwargs
+                return self.model.generate(**inputs, **generation_kwargs)
             case _:
                 print(f"Quant/Model with bit-size {n_bits} is not supported by quanto or hqq. [1,2,3,4,8,fp16]")
     
     def display(self):
-        print(f"\n\n{self.model_name}:\n")
+        print(f"\n\n{self.model_name}:",end="\n\n")
         for type, out in self.outputs.items():
-            print(f"Cache {type}: {self.tokenizer.batch_decode(out)}")
+            output_list = self.tokenizer.batch_decode(out)
+            print(f"Cache {type}: {output_list}",end="\n\n")
+            for response in output_list:
+                print(response)
+            print("\n\n")
     
     def terminate(self):
         torch.cuda.empty_cache()
