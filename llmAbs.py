@@ -5,6 +5,7 @@ import logging
 class llmAbs:
     def __init__(self, model_name):
         self.check_gpu()
+        self.check_memory()
         self.model_name = model_name
         self.init_model(model_name)
     
@@ -14,6 +15,10 @@ class llmAbs:
             logging.warning('If you use CPU it will be very slow')
         else:
             print(f"Cuda device found: {torch.cuda.get_device_name(0)}")
+
+    def check_memory(self):
+        memory_info = torch.cuda.mem_get_info()
+        print(f"Free Memory Usage: {memory_info[0]}\nTotal Available Memory: {memory_info[1]}")
       
     def init_model(self, model_name):
         # Load tokenizer and model
