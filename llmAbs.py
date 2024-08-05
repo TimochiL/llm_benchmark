@@ -13,8 +13,10 @@ class llmAbs:
         if not torch.cuda.is_available():
             logging.warning('GPU device not found. Go to Runtime > Change Runtime type and set Hardware accelerator to "GPU"')
             logging.warning('If you use CPU it will be very slow')
+            self.device = 'auto'
         else:
             print(f"Cuda device found: {torch.cuda.get_device_name(0)}")
+            self.device = 'cuda:0'
 
     def check_memory(self):
         memory_info = torch.cuda.mem_get_info()
@@ -23,13 +25,14 @@ class llmAbs:
     def init_model(self, model_name):
         # Load tokenizer and model
         self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map="auto")
+        self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=self.device)
         
         # Set pad token for batched generation
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         
         # Get inputs
         self.inputs = self.get_inputs(2)
+        self.model.to(self.device)
         
         # Set parameters
         self.generation_kwargs = self.set_kwargs()
@@ -57,7 +60,7 @@ class llmAbs:
                 if int(line[2]) < num_questions:
                     sub_prompts.append(line[3])
                 else:
-                    return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.model.device)
+                    return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.device)
     
     def set_kwargs(self):
         gk = {
