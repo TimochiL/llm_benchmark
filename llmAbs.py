@@ -66,8 +66,8 @@ class llmAbs:
             "do_sample": False,
             "temperature": 1.0,
             "top_p": 1.0,
-            "max_new_tokens": 40,
-            "min_new_tokens": 20
+            "max_new_tokens": 10,
+            "min_new_tokens": 10
         }
         return gk
     
@@ -97,10 +97,9 @@ class llmAbs:
         for type, out in self.outputs.items():
             output_list = self.tokenizer.batch_decode(out)
             print(f"Cache {type}: {output_list}",end="\n\n")
-            for response in output_list:
-                print(response)
-            print("\n\n")
+            for i in range(len(output_list)):
+                print(f"Question {i+1}\n{''.join(['=']*10)}\n{output_list[i]}",end="\n\n")
     
     def terminate(self):
         torch.cuda.empty_cache()
-        
+        print(f"{''.join(['=']*17)}\nProcess Completed\n{''.join(['=']*17)}")
