@@ -1,6 +1,6 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-import logging
+import logging, math
 
 class llmAbs:
     def __init__(self, model_name):
@@ -30,20 +30,30 @@ class llmAbs:
         # Set pad token for batched generation
         self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
         
-        # Get inputs
-        self.inputs = self.get_inputs(sample_size)
-        
-        # Set parameters
-        self.generation_kwargs = self.set_kwargs()
-        
-        # Generate outputs hqq[1/2/3/4/8/fp16]
+        # Setup storage structures
         self.selected_types = (2,)
         self.outputs = dict()
         for type in self.selected_types:
-            self.outputs[type] = self.generate_output(type)
-            if self.outputs[type] is None:
-                raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
+            self.outputs[type] = []
         
+        self.sample_size = sample_size                  # Total number of questions to evaluate
+        batch_cycles = math.ceil(self.sample_size / 2)  # Use sample size and batch size (2) to calculate number of generation cycles
+        self.current_question = 0                       # Keep track of current question index
+        
+        # Set generation parameters
+        self.generation_kwargs = self.set_kwargs()
+        
+        # Get Inputs and Generate outputs hqq[2/4/fp16], quanto[1/2/3/4/8/fp16]
+        for type in self.selected_types:
+            for _ in range(batch_cycles):
+                self.inputs = self.get_inputs(self.current_question)
+                batch_outputs = self.tokenizer.batch_decode(self.generate_output(type))
+                if batch_outputs is None:
+                    raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
+                self.outputs[type].extend(batch_outputs) # Add batch outputs to corresponding outputs list in outputs dictionary
+
+                self.current_question += 2
+
         # Check responses
         self.valid_response_dict = dict()
         for type in self.selected_types:
@@ -56,16 +66,18 @@ class llmAbs:
         # Terminate cuda
         self.terminate()
     
-    def get_inputs(self, num_questions=391):
+    def get_inputs(self, current_question):
         sub_prompts = []
+        question_index = 0
         with open("forbidden_question_set.csv", "r") as f:
             f.readline()
             for line in f:
                 line = (*line.strip().split(','), )
-                if int(line[2]) < num_questions:
+                if current_question <= question_index < max(current_question+2, self.sample_size):                # ensure batch size of 2
                     sub_prompts.append(line[3])
-                else:
+                elif question_index == current_question+2:
                     return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.model.device)
+                question_index += 1
     
     def set_kwargs(self):
         gk = {
@@ -101,6 +113,7 @@ class llmAbs:
     def check_response(self, decoded_outputs):
         valid_list = [1]*len(decoded_outputs)
         for i in range(len(decoded_outputs)):
+            print(decoded_outputs[i])
             valid_list[i] = self.contains_hint(decoded_outputs[i])
         return valid_list
     
@@ -167,12 +180,12 @@ class llmAbs:
         return 1
     
     def display(self):
-    #     print(f"\n\n{self.model_name}:",end="\n\n")
-    #     for type, out in self.outputs.items():
-    #         output_list = self.tokenizer.batch_decode(out)
-    #         print(f"Cache {type}:",end="\n\n")
-    #         for i in range(len(output_list)):
-    #             print(f"Question {i+1}\n{''.join(['=']*10)}\n{output_list[i]}",end="\n\n")
+    # #     print(f"\n\n{self.model_name}:",end="\n\n")
+    # #     for type, out in self.outputs.items():
+    # #         output_list = self.tokenizer.batch_decode(out)
+    # #         print(f"Cache {type}:",end="\n\n")
+    # #         for i in range(len(output_list)):
+    # #             print(f"Question {i+1}\n{''.join(['=']*10)}\n{output_list[i]}",end="\n\n")
         for type, out in self.valid_response_dict.items():
             print(f"{type}: {out}")
     
