@@ -24,20 +24,20 @@ class llmAbs:
       
     def init_model(self, model_name, sample_size=389):
         # Setup storage structures
-        self.selected_types = (2,)
+        self.selected_types = (2,4,'fp16')
         self.outputs = dict()
         for type in self.selected_types:
             self.outputs[type] = []
         
         self.sample_size = sample_size                  # Total number of questions to evaluate
         batch_cycles = math.ceil(self.sample_size / 2)  # Use sample size and batch size (2) to calculate number of generation cycles
-        self.current_question = 0                       # Keep track of current question index
         
         # Set generation parameters
         self.generation_kwargs = self.set_shared_kwargs()
 
         # Get Inputs and Generate outputs hqq[2/4/fp16], quanto[1/2/3/4/8/fp16]
         for type in self.selected_types:
+            self.current_question = 0                       # Keep track of current question index
             for _ in range(batch_cycles):
                 # Load tokenizer and model
                 self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
@@ -63,6 +63,7 @@ class llmAbs:
         # Check responses
         self.valid_response_dict = dict()
         for type in self.selected_types:
+            print(f"{self.model_name} ({type}):")
             self.valid_response_dict[type] = self.check_response(self.outputs[type])
             
         
