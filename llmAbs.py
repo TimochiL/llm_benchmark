@@ -1,13 +1,13 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-import logging, math
+import logging, math, gc
 
 class llmAbs:
     def __init__(self, model_name):
         self.check_gpu()
         self.check_memory()
         self.model_name = model_name
-        self.init_model(model_name, 2)
+        self.init_model(model_name, 4)
     
     def check_gpu(self):
         if not torch.cuda.is_available():
@@ -22,14 +22,7 @@ class llmAbs:
         memory_info = torch.cuda.mem_get_info()
         print(f"Free Memory Usage: {memory_info[0]}\nTotal Available Memory: {memory_info[1]}")
       
-    def init_model(self, model_name, sample_size=391):
-        # Load tokenizer and model
-        self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
-        self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=0)
-        
-        # Set pad token for batched generation
-        self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
-        
+    def init_model(self, model_name, sample_size=389):
         # Setup storage structures
         self.selected_types = (2,)
         self.outputs = dict()
@@ -41,27 +34,40 @@ class llmAbs:
         self.current_question = 0                       # Keep track of current question index
         
         # Set generation parameters
-        self.generation_kwargs = self.set_kwargs()
-        
+        self.generation_kwargs = self.set_shared_kwargs()
+
         # Get Inputs and Generate outputs hqq[2/4/fp16], quanto[1/2/3/4/8/fp16]
         for type in self.selected_types:
             for _ in range(batch_cycles):
-                self.inputs = self.get_inputs(self.current_question)
-                batch_outputs = self.tokenizer.batch_decode(self.generate_output(type))
+                # Load tokenizer and model
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
+                self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=0)
+
+                # Set pad token for batched generation
+                self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
+
+                inputs = self.get_inputs(self.current_question)
+                batch_outputs = self.tokenizer.batch_decode(self.generate_output(type, inputs))
                 if batch_outputs is None:
                     raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
                 self.outputs[type].extend(batch_outputs) # Add batch outputs to corresponding outputs list in outputs dictionary
 
                 self.current_question += 2
+                
+                # Free memory
+                self.tokenizer = None
+                self.model = None
+                torch.cuda.empty_cache()
+                gc.collect()
 
         # Check responses
         self.valid_response_dict = dict()
         for type in self.selected_types:
-            self.valid_response_dict[type] = self.check_response(self.tokenizer.batch_decode(self.outputs[type]))
+            self.valid_response_dict[type] = self.check_response(self.outputs[type])
             
         
         # Display results
-        self.display()
+        # self.display()
         
         # Terminate cuda
         self.terminate()
@@ -69,31 +75,29 @@ class llmAbs:
     def get_inputs(self, current_question):
         sub_prompts = []
         question_index = 0
-        with open("forbidden_question_set.csv", "r") as f:
+        with open("/content/llm_benchmark/forbidden_question_set.csv", "r") as f:
             f.readline()
             for line in f:
                 line = (*line.strip().split(','), )
-                if current_question <= question_index < max(current_question+2, self.sample_size):                # ensure batch size of 2
+                if current_question <= question_index < min(current_question+2, self.sample_size):                # ensure batch size of 2
                     sub_prompts.append(line[3])
                 elif question_index == current_question+2:
                     return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.model.device)
                 question_index += 1
     
-    def set_kwargs(self):
+    def set_shared_kwargs(self):
         gk = {
-            "do_sample": False,
-            "temperature": 1.0,
-            "top_p": 1.0,
-            "max_new_tokens": 10,
-            "min_new_tokens": 10
+            "max_new_tokens": 40,
+            "min_new_tokens": 40,
+            "max_time": 120.0
         }
         return gk
     
-    def generate_output(self, n_bits):
+    def generate_output(self, n_bits, inputs):
         print(f"Generating output ({n_bits}).")
         match n_bits:
             case n if n in (1,2,3,4,8):
-                return self.model.generate(**self.inputs, cache_implementation="quantized",
+                return self.model.generate(**inputs, cache_implementation="quantized",
                     cache_config=
                     {
                         "backend": "HQQ",
@@ -101,19 +105,17 @@ class llmAbs:
                         "q_group_size": 32,
                         "residual_length": 64,
                         "device": self.model.device
-                    }
+                    }, **self.generation_kwargs
                 )
             case 'fp16':
-                inputs = self.inputs
-                generation_kwargs = self.generation_kwargs
-                return self.model.generate(**inputs, **generation_kwargs)
+                return self.model.generate(**inputs, do_sample=False, temperature=1.0, top_p=1.0, **self.generation_kwargs)
             case _:
                 print(f"Quant/Model with bit-size {n_bits} is not supported by quanto or hqq. [1,2,3,4,8,fp16]")
     
     def check_response(self, decoded_outputs):
         valid_list = [1]*len(decoded_outputs)
         for i in range(len(decoded_outputs)):
-            print(decoded_outputs[i])
+            print(decoded_outputs[i])   # Debugging purposes
             valid_list[i] = self.contains_hint(decoded_outputs[i])
         return valid_list
     
@@ -179,16 +181,19 @@ class llmAbs:
                 return 0
         return 1
     
-    def display(self):
-    # #     print(f"\n\n{self.model_name}:",end="\n\n")
-    # #     for type, out in self.outputs.items():
-    # #         output_list = self.tokenizer.batch_decode(out)
-    # #         print(f"Cache {type}:",end="\n\n")
-    # #         for i in range(len(output_list)):
-    # #             print(f"Question {i+1}\n{''.join(['=']*10)}\n{output_list[i]}",end="\n\n")
-        for type, out in self.valid_response_dict.items():
-            print(f"{type}: {out}")
+    # def display(self):
+    # # #     print(f"\n\n{self.model_name}:",end="\n\n")
+    # # #     for type, out in self.outputs.items():
+    # # #         output_list = self.tokenizer.batch_decode(out)
+    # # #         print(f"Cache {type}:",end="\n\n")
+    # # #         for i in range(len(output_list)):
+    # # #             print(f"Question {i+1}\n{''.join(['=']*10)}\n{output_list[i]}",end="\n\n")
+    #     for type, out in self.valid_response_dict.items():
+    #         print(f"{type}: {out}")
     
     def terminate(self):
+        self.model = None
+        self.tokenizer = None
         torch.cuda.empty_cache()
+        gc.collect()
         print(f"{''.join(['=']*17)}\nProcess Completed\n{''.join(['=']*17)}")
