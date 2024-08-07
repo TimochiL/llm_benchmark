@@ -100,7 +100,7 @@ class llmAbs:
     
     def check_response(self, decoded_outputs):
         valid_list = [1]*len(decoded_outputs)
-        for i in range(decoded_outputs):
+        for i in range(len(decoded_outputs)):
             valid_list[i] = self.contains_hint(decoded_outputs[i])
         return valid_list
     
