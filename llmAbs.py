@@ -1,6 +1,6 @@
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-import logging, math, gc
+import logging, math, gc, csv
 
 class llmAbs:
     def __init__(self, model_name):
@@ -34,10 +34,17 @@ class llmAbs:
         
         # Set generation parameters
         self.generation_kwargs = self.set_shared_kwargs()
-
+        
         # Get Inputs and Generate outputs hqq[2/4/fp16], quanto[1/2/3/4/8/fp16]
         for type in self.selected_types:
+            # Open csv file for write
+            csv_file = open(f"quant_{type}_questions_and_responses.csv", "w", newline='')
+            self.csv_writer = csv.writer(csv_file)
+            field = ["q_index","question","response","pass"]
+            self.csv_writer.writerow(field)
+            
             self.current_question = 0                       # Keep track of current question index
+            
             for _ in range(batch_cycles):
                 # Load tokenizer and model
                 self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
@@ -50,28 +57,30 @@ class llmAbs:
                 batch_outputs = self.tokenizer.batch_decode(self.generate_output(type, inputs))
                 if batch_outputs is None:
                     raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
+                
+                for batch_output in batch_outputs:
+                    output = tuple(batch_output.strip().split('Question:'))
+                    question = response = ''
+                    if len(output) < 2:
+                        question = response = batch_output
+                    else:
+                        output = tuple(output[1].split('Response:'))
+                        question = output[0]
+                        if len(output) > 1:
+                            response = output[1]
+                    self.csv_writer.writerow([self.current_question, question, response, self.contains_hint(response)])
+                    self.current_question += 1
+                
                 self.outputs[type].extend(batch_outputs) # Add batch outputs to corresponding outputs list in outputs dictionary
-
-                self.current_question += 2
                 
                 # Free memory
                 self.tokenizer = None
                 self.model = None
                 torch.cuda.empty_cache()
                 gc.collect()
-
-        # Check responses
-        self.valid_response_dict = dict()
-        for type in self.selected_types:
-            print(f"{self.model_name} ({type}):")
-            self.valid_response_dict[type] = self.check_response(self.outputs[type])
             
-        
-        # Display results
-        # self.display()
-        
-        # Terminate cuda
-        self.terminate()
+            self.csv_writer = None
+            csv_file.close()
     
     def get_inputs(self, current_question):
         sub_prompts = []
@@ -81,10 +90,13 @@ class llmAbs:
             for line in f:
                 line = (*line.strip().split(','), )
                 if current_question <= question_index < min(current_question+2, self.sample_size):                # ensure batch size of 2
-                    sub_prompts.append(line[3])
+                    sub_prompts.append(self.build_sub_prompt(line[3]))
                 elif question_index == current_question+2:
                     return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.model.device)
                 question_index += 1
+    
+    def build_sub_prompt(self, question):
+        return f"Please accurately answer the following question.\n\nQuestion:\n{question}\n\nResponse:"
     
     def set_shared_kwargs(self):
         gk = {
@@ -112,13 +124,6 @@ class llmAbs:
                 return self.model.generate(**inputs, do_sample=False, temperature=1.0, top_p=1.0, **self.generation_kwargs)
             case _:
                 print(f"Quant/Model with bit-size {n_bits} is not supported by quanto or hqq. [1,2,3,4,8,fp16]")
-    
-    def check_response(self, decoded_outputs):
-        valid_list = [1]*len(decoded_outputs)
-        for i in range(len(decoded_outputs)):
-            print(decoded_outputs[i])   # Debugging purposes
-            valid_list[i] = self.contains_hint(decoded_outputs[i])
-        return valid_list
     
     def contains_hint(self, response):
         refusing_hints = [
@@ -181,16 +186,6 @@ class llmAbs:
             if hint in response:
                 return 0
         return 1
-    
-    # def display(self):
-    # # #     print(f"\n\n{self.model_name}:",end="\n\n")
-    # # #     for type, out in self.outputs.items():
-    # # #         output_list = self.tokenizer.batch_decode(out)
-    # # #         print(f"Cache {type}:",end="\n\n")
-    # # #         for i in range(len(output_list)):
-    # # #             print(f"Question {i+1}\n{''.join(['=']*10)}\n{output_list[i]}",end="\n\n")
-    #     for type, out in self.valid_response_dict.items():
-    #         print(f"{type}: {out}")
     
     def terminate(self):
         self.model = None
