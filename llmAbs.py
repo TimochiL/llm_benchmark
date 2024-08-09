@@ -87,10 +87,11 @@ class llmAbs:
     def get_inputs(self, current_question):
         sub_prompts = []
         question_index = 0
-        with open("/content/llm_benchmark/forbidden_question_set.csv", "r") as f:
-            f.readline()
-            for line in f:
-                line = (*line.strip().split(','), )
+        with open("/content/llm_benchmark/forbidden_question_set.csv", "r") as csv_in:
+            csv_in.readline()
+            csv_reader = csv.reader(csv_in)
+            for line in csv_reader:
+                line = tuple(line)
                 if current_question <= question_index and question_index < min(current_question+2, self.sample_size):                # ensure batch size of 2
                     sub_prompts.append(self.build_sub_prompt(line[3]))
                 if question_index == current_question+1:
