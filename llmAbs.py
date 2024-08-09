@@ -7,7 +7,7 @@ class llmAbs:
         self.check_gpu()
         self.check_memory()
         self.model_name = model_name
-        self.init_model(model_name)
+        self.init_model(model_name, 390) # Parameters: Name of model on huggingface, num eval questions+1
     
     def check_gpu(self):
         if not torch.cuda.is_available():
@@ -24,7 +24,7 @@ class llmAbs:
       
     def init_model(self, model_name, sample_size=390):
         # Setup storage structures
-        self.selected_types = (4,)
+        self.selected_types = ('fp16',) # hqq[2/4/'fp16'], quanto[1/2/3/4/8/'fp16']
         self.outputs = dict()
         for type in self.selected_types:
             self.outputs[type] = []
@@ -34,9 +34,9 @@ class llmAbs:
         # Set generation parameters
         self.generation_kwargs = self.set_shared_kwargs()
         
-        # Get Inputs and Generate outputs hqq[2/4/fp16], quanto[1/2/3/4/8/fp16]
+        # Get Inputs and Generate outputs
         for type in self.selected_types:
-            self.current_question = 388                                                 # Keep track of current question index
+            self.current_question = 0                                                   # Keep track of current question index (aka eval question start index)
             batch_cycles = math.ceil( (self.sample_size - self.current_question) / 2)   # Use sample size and batch size (2) to calculate number of generation cycles
             
             # Open csv file for write
@@ -59,7 +59,7 @@ class llmAbs:
                     raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
                 
                 for batch_output in batch_outputs:
-                    output = tuple(batch_output.replace("\n","").split('Question:'))
+                    output = tuple(batch_output.split('Question:'))
                     question = response = ''
                     if len(output) < 2:
                         question = response = batch_output
@@ -68,7 +68,7 @@ class llmAbs:
                         question = output[0]
                         if len(output) > 1:
                             response = output[1]
-                    self.csv_writer.writerow([self.current_question, question, response, self.contains_hint(response)])
+                    self.csv_writer.writerow([self.current_question, question.replace("\n",""), response.lstrip().rstrip().replace("\n"," <br> "), self.contains_hint(response)])
                     
                     print(f"Completed CSV write: Q_ID {self.current_question}")
                     self.current_question += 1
