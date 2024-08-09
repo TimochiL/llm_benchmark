@@ -7,7 +7,12 @@ class llmAbs:
         self.check_gpu()
         self.check_memory()
         self.model_name = model_name
-        self.init_model(model_name, 390) # Parameters: Name of model on huggingface, num eval questions+1
+        # Parameters:
+        # 1. model_name (Name of model on huggingface)
+        # 2. quant_types[] (Type of quantization - hqq[2/4/'fp16'], quanto[1/2/3/4/8/'fp16'])
+        # 3. start_index (eval question to start on)
+        # 4. sample_size (num of eval questions)
+        self.init_model(model_name, ['fp16',], 0, 390)
     
     def check_gpu(self):
         if not torch.cuda.is_available():
@@ -22,9 +27,9 @@ class llmAbs:
         memory_info = torch.cuda.mem_get_info()
         print(f"Free Memory Usage: {memory_info[0]}\nTotal Available Memory: {memory_info[1]}")
       
-    def init_model(self, model_name, sample_size=390):
+    def init_model(self, model_name, quant_types, start_index=0, sample_size=390):
         # Setup storage structures
-        self.selected_types = ('fp16',) # hqq[2/4/'fp16'], quanto[1/2/3/4/8/'fp16']
+        self.selected_types = tuple(quant_types) 
         self.outputs = dict()
         for type in self.selected_types:
             self.outputs[type] = []
@@ -36,7 +41,7 @@ class llmAbs:
         
         # Get Inputs and Generate outputs
         for type in self.selected_types:
-            self.current_question = 0                                                   # Keep track of current question index (aka eval question start index)
+            self.current_question = start_index                                         # Keep track of current question index (aka eval question start index)
             batch_cycles = math.ceil( (self.sample_size - self.current_question) / 2)   # Use sample size and batch size (2) to calculate number of generation cycles
             
             # Open csv file for write
@@ -47,6 +52,7 @@ class llmAbs:
 
             for _ in range(batch_cycles):
                 # Load tokenizer and model
+                print(f"Generating output ({type}).")
                 self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
                 self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=0)
 
@@ -110,7 +116,6 @@ class llmAbs:
         return gk
     
     def generate_output(self, n_bits, inputs):
-        print(f"Generating output ({n_bits}).")
         match n_bits:
             case n if n in (1,2,3,4,8):
                 return self.model.generate(**inputs, cache_implementation="quantized",
