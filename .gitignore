@@ -8,3 +8,5 @@ __pycache__/gpu_check.cpython-312.pyc
 __pycache__/llmAbs.cpython-310.pyc
 __pycache__/llmAbs.cpython-312.pyc
 test.py
+csv_outputs/quant_2_questions_and_responses_0-389.csv
+csv_outputs/quant_4_questions_and_responses_0-389.csv

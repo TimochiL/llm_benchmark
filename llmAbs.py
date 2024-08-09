@@ -59,7 +59,7 @@ class llmAbs:
                     raise Exception("Generated output cannot be NoneType. Invalid selected type(s).")
                 
                 for batch_output in batch_outputs:
-                    output = tuple(batch_output.strip().split('Question:'))
+                    output = tuple(batch_output.replace("\n","").split('Question:'))
                     question = response = ''
                     if len(output) < 2:
                         question = response = batch_output
