@@ -36,14 +36,14 @@ class llmAbs:
         
         # Get Inputs and Generate outputs hqq[2/4/fp16], quanto[1/2/3/4/8/fp16]
         for type in self.selected_types:
+            self.current_question = 388                                                 # Keep track of current question index
+            batch_cycles = math.ceil( (self.sample_size - self.current_question) / 2)   # Use sample size and batch size (2) to calculate number of generation cycles
+            
             # Open csv file for write
-            csv_file = open(f"quant_{type}_questions_and_responses.csv", "w", newline='')
+            csv_file = open(f"quant_{type}_questions_and_responses_{self.current_question}-{self.sample_size-1}.csv", "w", newline='')
             self.csv_writer = csv.writer(csv_file)
             field = ["q_index","question","response","pass"]
             self.csv_writer.writerow(field)
-            
-            self.current_question = 388                       # Keep track of current question index
-            batch_cycles = math.ceil( (self.sample_size - self.current_question) / 2)  # Use sample size and batch size (2) to calculate number of generation cycles
 
             for _ in range(batch_cycles):
                 # Load tokenizer and model
