@@ -7,7 +7,7 @@ class llmAbs:
         self.check_gpu()
         self.check_memory()
         self.model_name = model_name
-        self.init_model(model_name, 4)
+        self.init_model(model_name)
     
     def check_gpu(self):
         if not torch.cuda.is_available():
@@ -22,15 +22,14 @@ class llmAbs:
         memory_info = torch.cuda.mem_get_info()
         print(f"Free Memory Usage: {memory_info[0]}\nTotal Available Memory: {memory_info[1]}")
       
-    def init_model(self, model_name, sample_size=389):
+    def init_model(self, model_name, sample_size=390):
         # Setup storage structures
-        self.selected_types = (2,4,'fp16')
+        self.selected_types = (4,)
         self.outputs = dict()
         for type in self.selected_types:
             self.outputs[type] = []
         
         self.sample_size = sample_size                  # Total number of questions to evaluate
-        batch_cycles = math.ceil(self.sample_size / 2)  # Use sample size and batch size (2) to calculate number of generation cycles
         
         # Set generation parameters
         self.generation_kwargs = self.set_shared_kwargs()
@@ -43,8 +42,9 @@ class llmAbs:
             field = ["q_index","question","response","pass"]
             self.csv_writer.writerow(field)
             
-            self.current_question = 0                       # Keep track of current question index
-            
+            self.current_question = 388                       # Keep track of current question index
+            batch_cycles = math.ceil( (self.sample_size - self.current_question) / 2)  # Use sample size and batch size (2) to calculate number of generation cycles
+
             for _ in range(batch_cycles):
                 # Load tokenizer and model
                 self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
@@ -69,10 +69,12 @@ class llmAbs:
                         if len(output) > 1:
                             response = output[1]
                     self.csv_writer.writerow([self.current_question, question, response, self.contains_hint(response)])
+                    
+                    print(f"Completed CSV write: Q_ID {self.current_question}")
                     self.current_question += 1
                 
                 self.outputs[type].extend(batch_outputs) # Add batch outputs to corresponding outputs list in outputs dictionary
-                
+
                 # Free memory
                 self.tokenizer = None
                 self.model = None
@@ -89,9 +91,9 @@ class llmAbs:
             f.readline()
             for line in f:
                 line = (*line.strip().split(','), )
-                if current_question <= question_index < min(current_question+2, self.sample_size):                # ensure batch size of 2
+                if current_question <= question_index and question_index < min(current_question+2, self.sample_size):                # ensure batch size of 2
                     sub_prompts.append(self.build_sub_prompt(line[3]))
-                elif question_index == current_question+2:
+                if question_index == current_question+1:
                     return self.tokenizer(sub_prompts, padding=True, return_tensors="pt").to(self.model.device)
                 question_index += 1
     
