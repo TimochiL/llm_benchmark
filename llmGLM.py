@@ -1,8 +1,8 @@
 import torch
-from transformers import AutoTokenizer, AutoModelForCausalLM
+from transformers import AutoTokenizer, AutoModelForCausalLM, AutoModel, HqqConfig
 import logging, math, gc, csv
 
-class llmAbs:
+class llmGLM:
     def __init__(self, model_name):
         self.check_gpu()
         self.check_memory()
@@ -50,9 +50,9 @@ class llmAbs:
             for _ in range(batch_cycles):
                 # Load tokenizer and model
                 print(f"Generating output ({type}).")
-                self.tokenizer = AutoTokenizer.from_pretrained(model_name, padding_side="left")
-                self.model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float16, device_map=0)
-
+                self.tokenizer = AutoTokenizer.from_pretrained(model_name, trust_remote_code=True)
+                self.model = self.get_model(type)
+                
                 # Set pad token for batched generation
                 self.tokenizer.pad_token_id = self.tokenizer.eos_token_id
 
@@ -88,6 +88,13 @@ class llmAbs:
             self.csv_writer = None
             csv_file.close()
     
+    def get_model(self, quant_type):
+        quant_config = None
+        if isinstance(quant_type, int):
+            quant_config = HqqConfig(nbits=type, group_size=64, quant_zero=False, quant_scale=False, axis=0)
+            return AutoModelForCausalLM.from_pretrained(self.model_name, trust_remote_code=True, torch_dtype=torch.float16, device_map=0, quantization_config=quant_config)
+        return AutoModelForCausalLM.from_pretrained(self.model_name, trust_remote_code=True, torch_dtype=torch.float16, device_map=0)
+    
     def get_inputs(self, current_question):
         sub_prompts = []
         question_index = 0
@@ -114,22 +121,7 @@ class llmAbs:
         return gk
     
     def generate_output(self, n_bits, inputs):
-        match n_bits:
-            case n if n in (1,2,3,4,8):
-                return self.model.generate(**inputs, cache_implementation="quantized",
-                    cache_config=
-                    {
-                        "backend": "HQQ",
-                        "nbits": n_bits,
-                        "q_group_size": 32,
-                        "residual_length": 64,
-                        "device": self.model.device
-                    }, **self.generation_kwargs
-                )
-            case 'fp16':
-                return self.model.generate(**inputs, do_sample=False, temperature=1.0, top_p=1.0, **self.generation_kwargs)
-            case _:
-                print(f"Quant/Model with bit-size {n_bits} is not supported by quanto or hqq. [1,2,3,4,8,fp16]")
+        return self.model.generate(**inputs, do_sample=False, temperature=1.0, top_p=1.0, **self.generation_kwargs)
     
     def contains_hint(self, response):
         refusing_hints = [
