@@ -14,8 +14,8 @@ import torch
 """
 
 def main():
-    # llmAbs('meta-llama/Llama-2-7b-chat-hf')
-    llmGLM('THUDM/chatglm3-6b')
+    llmAbs('meta-llama/Llama-2-7b-chat-hf')
+    # llmGLM('THUDM/chatglm3-6b')
 
 if __name__ == '__main__':
     main()
