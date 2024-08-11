@@ -8,3 +8,4 @@ git+http://github.com/huggingface/transformers
 Cython
 numba
 decorator
+matplotlib
