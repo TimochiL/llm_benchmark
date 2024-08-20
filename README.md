@@ -12,11 +12,11 @@
 
 ## Features
 
-This benchmark evaluates the effect of KV Cache Quantization on safety measures against offensive and jailbreak prompts.
+This benchmark evaluates the effect of KV cache quantization on LLM response safety using sample questions distributed among 13 forbidden scenarios.
 
 > [!NOTE]
 > Currently, only the Meta Llama-2 7B Chat model is implemented in the benchmark with HQQ backend.
-> Implementation of other models, model families, and backends are coming soon.
+> This benchmark serves as a proof-of-concept. Other models, model families, and backends are considerations for future work.
 
 ## Resources
 
