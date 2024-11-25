@@ -3,12 +3,12 @@
 > [!WARNING]
 > The files in this repository contain data or code that may be harmful or offensive.
 
-### See the corresponding research paper here: [coming soon...]
+### See the corresponding research paper here: [Key-Value Cache Quantization in Large Language Models: A Safety Benchmark](https://wepub.org/index.php/IJCSIT/article/view/4079)
 
 ## Status
 
-> [!WARNING]
-> This benchmark is still in development. Broken features are expected.
+> [!NOTE]
+> Stable.
 
 ## Features
 
